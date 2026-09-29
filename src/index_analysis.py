@@ -1,4 +1,4 @@
-"""Replay the existing strategy for one index, without changing global pools."""
+"""Replay 931743 close signals with next-session open execution."""
 
 from dataclasses import asdict
 from datetime import date
@@ -6,8 +6,8 @@ from datetime import date
 import pandas as pd
 
 from src import config
-from src.index_data import Candle, INDEX_CODE, INDEX_NAME
-from src.rotation_strategy import RotationStrategy
+from src.index_data import Candle
+from src.index_strategy import IndexStrategy
 
 # Keep the previous analysis origin fixed; daily updates must not drop old signals.
 SIGNAL_START = date(2024, 9, 29)
@@ -58,7 +58,7 @@ def analyze_history(candles: list[Candle], *, start: date = SIGNAL_START) -> dic
         raise ValueError('行情尚未覆盖固定信号起点，无法生成报告。')
 
     frame = pd.DataFrame([asdict(c) for c in candles])
-    strategy = RotationStrategy(universe={INDEX_CODE: {'name': INDEX_NAME}})
+    strategy = IndexStrategy()
     cash = float(config.INITIAL_CAPITAL)
     units = 0.0
     pending = None
@@ -74,10 +74,10 @@ def analyze_history(candles: list[Candle], *, start: date = SIGNAL_START) -> dic
         open_value = cash + units * opening
         fee_today = slip_today = 0.0
         if pending and pending['action'] == 'clear_all':
-            # The existing engine resets this even when already in cash.
+            # A clear instruction resets cooldown even when already in cash.
             last_clear = day
         if in_window and pending and pending['action'] != 'hold':
-            target = pending['target_holdings'].get(INDEX_CODE, 0.0)
+            target = pending['target_weight']
             fill = None
             if units > 0 and (pending['action'] == 'clear_all' or target == 0):
                 quantity = units
@@ -130,21 +130,17 @@ def analyze_history(candles: list[Candle], *, start: date = SIGNAL_START) -> dic
             continue
         actual_weight = units * closing / equity
         snapshot = frame.iloc[:i + 1]
-        decision = strategy.decide(
-            {INDEX_CODE: snapshot},
-            current_holdings={INDEX_CODE: actual_weight} if units > 0 else {},
-            current_cash=cash / equity,
-        )
+        decision = strategy.decide(snapshot, invested=units > 0)
         raw_action = decision['action']
         cooldown = last_clear is not None and (day - last_clear).days < config.CLEAR_COOLDOWN_DAYS
         blocked = cooldown and raw_action not in ('hold', 'clear_all')
         if blocked:
-            decision = {'action': 'hold', 'target_holdings': {},
-                        'target_cash': 1.0, 'signals': decision['signals']}
-        score = decision['signals']['rank'][0]
+            decision = {'action': 'hold', 'target_weight': 0.0,
+                        'signals': decision['signals']}
+        score = decision['signals']['score']
         risk = decision['signals']['risk']
         reasons = '; '.join(risk['reasons'])
-        target = decision['target_holdings'].get(INDEX_CODE, 0.0)
+        target = decision['target_weight']
         action = decision['action']
         if blocked:
             kind = 'cooldown'
@@ -183,7 +179,7 @@ def analyze_history(candles: list[Candle], *, start: date = SIGNAL_START) -> dic
                 'trend_ok': bool(score['trend_ok']),
                 'risk_emergency': bool(risk['emergency']),
                 'risk_warning': bool(risk['warning']),
-                'momentum_declining': bool(risk['metrics']['mom_declining']),
+                'momentum_declining': bool(risk['mom_declining']),
                 'risk_reasons': reasons, 'raw_action': raw_action,
                 'effective_action': action, 'cooldown_active': cooldown,
                 'cooldown_blocked': blocked,

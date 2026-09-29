@@ -227,7 +227,7 @@ header .subtle{{color:#cfdddb}}
 .notes a{{overflow-wrap:anywhere}}
 </style></head><body>
 <a class="skip" href="#main">跳至报告内容</a>
-<header><div class="eyebrow">指数研究 · 每日收盘后信号 · 非实际交易</div><h1>{_text(report.get("index_name"))} <span class="subtle">{_text(report.get("index_code"))}</span></h1><p>基于历史数据的单标的策略改编与假设性模拟；信号不等于成交，指数本身不可直接交易。</p>
+<header><div class="eyebrow">指数研究 · 每日收盘后信号 · 非实际交易</div><h1>{_text(report.get("index_name"))} <span class="subtle">{_text(report.get("index_code"))}</span></h1><p>仅观察 931743 自身动量，不代表 A 股整体撤退信号；信号不等于成交，指数本身不可直接交易。</p>
 <div class="meta"><span>数据状态：{_text(_label(report.get("data_status"), DATA_LABELS))}</span><span>行情请求截止日：{_text(report.get("requested_as_of"))}</span><span>最近可用收盘：{_text(report.get("latest_date"))}</span><span>生成于：<time>{_text(report.get("generated_at"))}</time></span></div></header>
 <main id="main"><nav aria-label="报告导航"><a href="#overview">概览</a><a href="#chart">价格与信号</a><a href="#events">指令事件</a><a href="#daily">全部每日状态</a><a href="#trips">持仓周期</a><a href="#method">口径与下载</a></nav>
 <section id="overview" aria-labelledby="overview-heading"><h2 id="overview-heading">当前观察</h2><p class="alert">{_text(report.get("status_message"))}数据状态为「{_text(_label(report.get("data_status"), DATA_LABELS))}」，请以最近可用收盘日而非页面生成时间判断新鲜度。</p><p class="lead">{latest_intro}</p><p>最近收盘价：<strong>{_text(_number(latest.get("close") if latest else None))}</strong> 点；MA10：<strong>{_text(_number(latest.get("ma10") if latest else None))}</strong> 点。模拟实际仓位与收盘后的目标指令分开展示；最新模拟仓位 <strong>{_text(_number(None if summary.get("position_weight") is None else summary["position_weight"] * 100, 2, "%"))}</strong>{f'，当日目标仓位 {_text(_number(latest.get("target_weight") * 100 if latest.get("target_weight") is not None else None, 2, "%"))}' if latest else ''}。</p><div class="metrics">{metrics}</div></section>
@@ -238,7 +238,7 @@ header .subtle{{color:#cfdddb}}
 <section id="method" aria-labelledby="method-heading"><h2 id="method-heading">研究口径与局限</h2>
 <ul class="notes">
 <li>固定历史行情起点 {_text(report.get("history_start"))}（供动量预热），分析信号起点 {_text(report.get("signal_start"))}；首个实际信号日期 {_text(report.get("first_signal_date"))}。不以页面生成日虚构缺失行情。</li>
-<li>单标的适配：原多标的轮动规则用于 {_text(report.get("index_code"))} 的方向研究；目标仓位 1/3 并可能随行情漂移。原策略的 reduce_half 在此按目标 1/3 调仓检查，实际仓位低于目标时甚至可能补仓，并非机械减半；未成交时标记「未成交」。</li>
+<li>仅研究 {_text(report.get("index_code"))} 的动量与趋势，不进行板块排名或全市场广度判断。目标仓位 {_text(_number(params.get("target_weight") * 100, 2, "%"))}，持有期间允许漂移。历史动作名 reduce_half 表示检查该目标：低于目标可能补仓，高于目标不减仓，未成交时标记「未成交」，并非机械减半。</li>
 <li>冷却期 {_text(params.get("cooldown_calendar_days"))} 个自然日；趋势均线 MA{_text(params.get("trend_ma"))}，波动观察窗口 {_text(params.get("volatility_window"))} 日，阈值 {_text(params.get("volatility_threshold_pct"))}%；动量权重：{weight_description}。</li>
 <li>模拟初始资金 {_text(_number(params.get("initial_capital")))}；单侧手续费 {_text(params.get("commission_per_side"))}，单侧滑点 {_text(params.get("slippage_per_side"))}。模拟执行使用下一可用交易日开盘假设，不是券商真实成交；存在交易时延、成本、流动性与数据修订风险。</li>
 <li>指数不可直接交易；本页不构成投资建议。指数数据来源：{source_link}（外链仅供核查，报告本身离线可用）。</li>

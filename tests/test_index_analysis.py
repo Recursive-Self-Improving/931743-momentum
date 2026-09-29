@@ -11,8 +11,9 @@ if str(ROOT) not in sys.path:
 
 from src import config
 from src.index_analysis import analyze_history
-from src.index_data import Candle, INDEX_CODE
-from src.rotation_strategy import RotationStrategy
+from src.index_data import Candle
+from src.index_strategy import IndexStrategy
+from src.risk_controller import RiskController
 
 
 def candles_for(closes):
@@ -71,14 +72,41 @@ def test_cooldown_counts_calendar_days_and_repeated_flat_clears_reset_it():
     assert result['trades'][0]['execution_date'] == candles[76].date.isoformat()
 
 
-def test_explicit_index_universe_does_not_change_default_etf_decisions():
-    frame = pd.DataFrame({'close': [100.0 + i for i in range(80)]})
-    default = RotationStrategy()
-    custom = RotationStrategy(universe={INDEX_CODE: {'name': 'index'}})
-    selected = custom.decide({INDEX_CODE: frame})
-    rejected = default.decide({INDEX_CODE: frame})
-    assert selected['target_holdings'] == {INDEX_CODE: 1 / config.MAX_HOLDINGS}
-    assert selected['signals']['risk']['metrics']['ma_bull_pct'] == 1.0
-    assert rejected['target_holdings'] == {}
-    assert rejected['signals']['risk']['emergency'] is True
-    assert INDEX_CODE not in config.ETF_POOL
+@pytest.mark.parametrize('last_close', [100.0, 100.001, 1000.0])
+def test_entry_requires_positive_adjusted_score_and_strict_trend(last_close):
+    decision = IndexStrategy().decide(
+        pd.DataFrame({'close': [100.0] * 79 + [last_close]}), invested=False,
+    )
+    # Flat prices, rounding to zero, and a zero volatility factor all forbid entry.
+    assert decision['action'] == 'clear_all'
+    assert decision['target_weight'] == 0.0
+
+
+def test_decline_requires_five_strictly_decreasing_scores_and_clear_takes_priority():
+    risk = RiskController()
+    for momentum in (5.0, 4.0, 3.0, 2.0):
+        assert risk.analyze(momentum, True)['warning'] is False
+    assert risk.analyze(1.0, True)['warning'] is True
+    assert risk.analyze(1.0, True)['warning'] is False  # A tie breaks the decline.
+
+    strategy = IndexStrategy()
+    prices = [100.0 + i for i in range(80)]
+    for last_close in (200.0, 195.0, 190.0, 185.0, 180.0):
+        decision = strategy.decide(pd.DataFrame({'close': prices[:-1] + [last_close]}), invested=True)
+    assert decision['action'] == 'reduce_half'
+    assert decision['target_weight'] == pytest.approx(1 / 3)
+    decision = strategy.decide(pd.DataFrame({'close': prices[:-1] + [100.0]}), invested=True)
+    assert decision['signals']['risk']['warning'] is True
+    assert decision['action'] == 'clear_all'
+    assert decision['target_weight'] == 0.0
+
+
+def test_healthy_hold_keeps_units_and_allows_weight_to_drift():
+    candles = candles_for([100.0] * 70 + [110.0 + 2 * i for i in range(20)])
+    result = analyze_history(candles, start=candles[70].date)
+    assert len(result['trades']) == 1
+    assert result['trades'][0]['side'] == 'buy'
+    latest = result['daily'][-1]
+    assert latest['effective_action'] == 'hold'
+    assert latest['actual_weight'] > 1 / 3
+    assert latest['index_units'] == result['trades'][0]['units']
