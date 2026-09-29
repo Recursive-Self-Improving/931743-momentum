@@ -1,0 +1,76 @@
+name: Daily 931743 momentum signals
+
+on:
+  schedule:
+    # UTC 10:00 = Asia/Shanghai 18:00, after the A-share close.
+    # Holidays still check the source; missing bars never become fake signals.
+    - cron: '0 10 * * 1-5'
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Update signals and build full history
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-report.txt
+
+      - name: Install report dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-report.txt
+
+      - name: Fetch complete history and update close signals
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m src.index_daily --output site | tee "$RUNNER_TEMP/index-signals.log"
+          {
+            echo '## 931743 动量信号更新'
+            echo '```text'
+            cat "$RUNNER_TEMP/index-signals.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report and downloadable data
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy report
+        id: deployment
+        uses: actions/deploy-pages@v4

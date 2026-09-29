@@ -1,0 +1,16 @@
+# Data & logs
+data/*.csv
+data/*.json
+data/*.pkl
+logs/*.txt
+/site/
+/reports/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
