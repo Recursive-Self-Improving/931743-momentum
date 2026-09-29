@@ -15,3 +15,6 @@
 - ARM64 主机的默认浏览器自动安装可能失败；本次使用 Playwright 下载的 ARM Chromium，配合临时解包的运行库、CJK 字体及本地 CDP 完成桌面／手机烟测，没有修改系统软件包。浏览器原生日期输入的通用 `fill` 曾将 `2026-01-01` 填成 `60101-02-02`；验证筛选时应核对实际 input.value，而不是误判业务筛选失效。
 - `reports/` 是本地分析产物，`site/` 是 Pages 构建产物；两者分别由根级 `/reports/`、`/site/` 规则忽略，不应提交生成的 CSV、JSON 或 HTML。新增忽略规则前应检查是否已有文件被跟踪，忽略规则本身不会取消已有跟踪。
 - 项目文档聚焦A股ETF策略自身的逻辑与交易约束，采用中性表述；整理文案时保留既有的货币基金等资产类别名称，不改变交易规则。
+- `src/index_report.py` 仅依赖标准库；审计生成页面时可用 `site/summary.json` 重放 `render_html`，与忽略的 `site/index.html` 逐字节比对，再检查浏览器脚本、资源请求及文本／属性／SVG 转义，不能只审计生成器或只信任页面说明。
+- `requirements-report.txt` 只固定 pandas、NumPy 两个直接依赖，不是含传递依赖和发行包哈希的完整锁文件；GitHub Actions 的 `@vN` 也是可移动标签，不能据这些版本标记断言构建供应链已验证。
+- Python 3.12 的 `SMTP.starttls()` 默认上下文不验证证书或主机名；本项目通知路径已用本地自签证书与假凭据复现，认证前应显式传入 `ssl.create_default_context()`。ETF 缓存的 `pickle.load` 同样是执行边界，后置的 DataFrame／日期检查不能保护被篡改的缓存；这两项不属于独立 HTML 页面的执行路径。
